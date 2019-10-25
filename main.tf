@@ -10,7 +10,6 @@ resource "random_id" "instance_id" {
  byte_length = 8
 }
 
-//Comment here
 resource "google_compute_instance" "default" {
  name         = "terraform-vm-${random_id.instance_id.hex}"
  machine_type = "f1-micro"
