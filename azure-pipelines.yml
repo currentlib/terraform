@@ -19,14 +19,13 @@ stages:
       inputs:
         terraformVersion: 'latest'
     - script: echo "Running terraform"
-    - displayName: 'Frontend Build'
+      displayName: 'Terraform Init and Apply'
 
     # - script: |
     #     cd terraform
     #     terraform init
     #     terraform plan -out=tfplan
     #     terraform apply -auto-approve tfplan
-      displayName: 'Terraform Init and Apply'
 
 # STAGE 2: Build & Deploy
 - stage: DeployApps
