@@ -1,0 +1,70 @@
+trigger:
+- main
+
+pool:
+  # VM agent
+  vmImage: 'ubuntu-latest'
+
+variables:
+  # Service Connection between azure dev-ops and subscription
+  azureServiceConnection: 'ConnName'
+
+stages:
+# STAGE 1: Infrastructure
+- stage: Infrastructure
+  jobs:
+  - job: Terraform_Plan_Apply
+    steps:
+    - task: TerraformInstaller@1
+      inputs:
+        terraformVersion: 'latest'
+    - script: echo "Running terraform"
+    - displayName: 'Frontend Build'
+
+    # - script: |
+    #     cd terraform
+    #     terraform init
+    #     terraform plan -out=tfplan
+    #     terraform apply -auto-approve tfplan
+      displayName: 'Terraform Init and Apply'
+
+# STAGE 2: Build & Deploy
+- stage: DeployApps
+  dependsOn: Infrastructure
+  jobs:
+  - job: BuildBackend
+    steps:
+    - script: echo "Installing Python deps and running tests..."
+      displayName: 'Backend Build'
+
+  - job: BuildFrontend
+    steps:
+    - script: echo "NPM Install and NPM Build..."
+      displayName: 'Frontend Build'
+
+
+# - stage: DeployApps
+#   dependsOn: Infrastructure
+#   jobs:
+#   - job: BuildBackend
+#     steps:
+#     - task: UsePythonVersion@0
+#       inputs:
+#         versionSpec: '3.9'
+#     - script: |
+#         cd backend
+#         python -m pip install --upgrade pip
+#         pip install -r requirements.txt
+#       displayName: 'Install Python Dependencies'
+
+#   - job: BuildFrontend
+#     steps:
+#     - task: NodeTool@0
+#       inputs:
+#         versionSource: 'spec'
+#         versionSpec: '18.x'
+#     - script: |
+#         cd frontend
+#         # npm install (commented out to save time during your first test)
+#         echo "React build would happen here"
+#       displayName: 'Install NPM and Build'
