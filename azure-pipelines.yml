@@ -1,69 +1,85 @@
 trigger:
 - main
 
+resources:
+  repositories:
+    - repository: ai_repo
+      name: py-azurefunc-iep-2-ai
+    - repository: backend_repo
+      name: py-azurefunc-iep-backend-1
+    - repository: frontend_repo
+      name: js-swa-iep-portal-frontend-1
+
 pool:
-  # VM agent
   vmImage: 'ubuntu-latest'
 
-variables:
-  # Service Connection between azure dev-ops and subscription
-  azureServiceConnection: 'ConnName'
-
 stages:
-# STAGE 1: Infrastructure
-- stage: Infrastructure
+
+# STAGE 1: PLAN
+- stage: Build_Plan
+  displayName: "1. Terraform Plan"
   jobs:
-  - job: Terraform_Plan_Apply
+  - job: PlanJob
     steps:
-    - task: TerraformInstaller@1
+    - checkout: self
+    - script: |
+        terraform init
+        terraform plan -out=main.tfplan
+      displayName: 'Create Plan'
+      env:
+        ARM_SUBSCRIPTION_ID: $(sub_id) #add these variables in UI
+        ARM_CLIENT_ID: $(client_id)
+        ARM_CLIENT_SECRET: $(client_secret)
+        ARM_TENANT_ID: $(tenant_id)
+
+# STAGE 2: APPROVAL
+- stage: Approval
+  displayName: "2. Review"
+  dependsOn: Build_Plan
+  jobs:
+  - job: WaitForReview
+    pool: server # Required for ManualValidation
+    steps:
+    - task: ManualValidation@0
       inputs:
-        terraformVersion: 'latest'
-    - script: echo "Running terraform"
-      displayName: 'Terraform Init and Apply'
+        notifyUsers: 'admin@example.com' #set responsible person
+        instructions: 'Check the Plan logs. If it looks good, click Resume.'
 
-    # - script: |
-    #     cd terraform
-    #     terraform init
-    #     terraform plan -out=tfplan
-    #     terraform apply -auto-approve tfplan
-
-# STAGE 2: Build & Deploy
-- stage: DeployApps
-  dependsOn: Infrastructure
+# STAGE 3: DEPLOY
+- stage: Deploy_Infrastructure_And_Apps
+  displayName: "3. Deploy Everything"
+  dependsOn: Approval
   jobs:
-  - job: BuildBackend
+  - job: DeployJob
     steps:
-    - script: echo "Installing Python deps and running tests..."
-      displayName: 'Backend Build'
+    - checkout: self
+    - checkout: ai_repo
+    - checkout: backend_repo
+    - checkout: frontend_repo
 
-  - job: BuildFrontend
-    steps:
-    - script: echo "NPM Install and NPM Build..."
-      displayName: 'Frontend Build'
+    - script: |
+        terraform init
+        terraform apply -auto-approve
+      displayName: 'Apply Terraform'
+      env:
+        ARM_SUBSCRIPTION_ID: $(sub_id)
+        ARM_CLIENT_ID: $(client_id)
+        ARM_CLIENT_SECRET: $(client_secret)
+        ARM_TENANT_ID: $(tenant_id)
 
+    - task: AzureFunctionApp@1
+      inputs:
+        azureSubscription: 'MyServiceConnection'
+        appName: 'iep-2-ai'
+        package: '$(Agent.BuildDirectory)/ai_repo'
 
-# - stage: DeployApps
-#   dependsOn: Infrastructure
-#   jobs:
-#   - job: BuildBackend
-#     steps:
-#     - task: UsePythonVersion@0
-#       inputs:
-#         versionSpec: '3.9'
-#     - script: |
-#         cd backend
-#         python -m pip install --upgrade pip
-#         pip install -r requirements.txt
-#       displayName: 'Install Python Dependencies'
+    - task: AzureFunctionApp@1
+      inputs:
+        azureSubscription: 'MyServiceConnection'
+        appName: 'iep-backend'
+        package: '$(Agent.BuildDirectory)/backend_repo'
 
-#   - job: BuildFrontend
-#     steps:
-#     - task: NodeTool@0
-#       inputs:
-#         versionSource: 'spec'
-#         versionSpec: '18.x'
-#     - script: |
-#         cd frontend
-#         # npm install (commented out to save time during your first test)
-#         echo "React build would happen here"
-#       displayName: 'Install NPM and Build'
+    - task: AzureStaticWebApp@0
+      inputs:
+        app_location: '/frontend_repo'
+        azure_static_web_apps_api_token: $(SWA_TOKEN)
